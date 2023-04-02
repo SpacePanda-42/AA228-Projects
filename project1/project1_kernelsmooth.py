@@ -84,8 +84,7 @@ def get_parental_instantiations(data, all_nodes, node_parents, node_parent_indic
     if node_parents.shape[0] > 0:
         n_parents = node_parents.shape[0]
         # _, node_indices, _ = np.intersect1d(all_nodes, node_parents, return_indices=True) # get the indices in all_nodes for the parent nodes
-        # node_indices = np.flip(np.
-        # (node_indices))
+        # node_indices = np.flip(np.sort(node_indices))
         parent_data = data[:,node_parent_indices] # pull the columns of parent data for all parent nodes
         parent_max_vals = np.max(parent_data, axis=0)
 

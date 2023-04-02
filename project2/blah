@@ -1,0 +1,332 @@
+%% Define the total time and sample rate - make sure same as other files
+sampleTime = 0.1;                  % Sample time [s]
+timeEnd = 10;                     % Simulation end time
+tspan = 0:sampleTime:timeEnd;      % Time array for simluation
+% updateRate = 1; % How many times we predict before updating
+
+%% Read in ODE & sensor data saved to files previously 
+X = load('X_ODE.mat');
+X = struct2array(X);
+IMU = load('pose.mat');
+IMU = struct2array(IMU);
+IMU(1) = 0;
+
+%% ~~~~~~~~ SIMULATE EKF - PREDICT = DYNAMICS, UPDATE = BEACONS ~~~~~~~~ %%
+% Beacon positions currently hardcoded in get_beacons_H function
+Q_dynamics = diag([1, 1, 0.001]);
+R_beacons = eye(3);
+P_init = diag([25, 25, 1]);
+
+% Robot 1
+u1 = [5; 0.25];
+
+% Robot 2, same Q, R, and P as Robot 1 (same confidence in measurements)
+u2 = [6; 0.35];
+
+% Robot 3, same Q, R, and P as Robot 1 (same confidence in measurements)
+u3 = [7; 0.25];
+
+u4 = [4, 0.3];
+
+[x1_update_with_beacons, y1_update_with_beacons] = perform_filtering(u1, X, Q_dynamics, R_beacons, P_init, sampleTime, 1, "dynamics", 0, ~, ~, ~, 1);
+[x2_update_with_beacons, y2_update_with_beacons] = perform_filtering(u2, X, Q_dynamics, R_beacons, P_init, sampleTime, 2, "dynamics", 0, ~, ~, ~, 2);
+[x3_update_with_beacons, y3_update_with_beacons] = perform_filtering(u3, X, Q_dynamics, R_beacons, P_init, sampleTime, 3, "dynamics", 0, ~, ~, ~, 3);
+
+
+% Write out data
+save('x1_estimate_with_beacons.mat','x1_update_with_beacons');
+save('y1_estimate_with_beacons.mat', 'y1_update_with_beacons');
+
+save('x2_estimate_with_beacons.mat','x2_update_with_beacons');
+save('y2_estimate_with_beacons.mat', 'y2_update_with_beacons');
+
+save('x3_estimate_with_beacons.mat','x3_update_with_beacons');
+save('y3_estimate_with_beacons.mat', 'y3_update_with_beacons');
+
+
+%% ~~~~~~~~~~ SIMULATE EKF - PREDICT = IMU, UPDATE = BEACONS ~~~~~~~~~~~ %%
+Q_IMU = diag([0.1, 0.1, 0.01]);
+
+[x1_predict_with_IMU, y1_predict_with_IMU] = perform_filtering(u1, X, Q_IMU, R_beacons, P_init, sampleTime, 1, "IMU", IMU(:,3), ~, ~, ~, 1, ~, ~, ~, ~, ~, ~, ~);
+[x2_predict_with_IMU, y2_predict_with_IMU] = perform_filtering(u2, X, Q_IMU, R_beacons, P_init, sampleTime, 2, "IMU", IMU(:,3), ~, ~, ~, 2, ~, ~, ~, ~, ~, ~, ~);
+[x3_predict_with_IMU, y3_predict_with_IMU] = perform_filtering(u3, X, Q_IMU, R_beacons, P_init, sampleTime, 3, "IMU", IMU(:,3), ~, ~, ~, 3, ~, ~, ~, ~, ~, ~, ~);
+
+
+% Write out data
+save('x1_estimate_with_IMU.mat','x1_predict_with_IMU');
+save('y1_estimate_with_IMU.mat', 'y1_predict_with_IMU');
+
+save('x2_estimate_with_IMU.mat','x2_predict_with_IMU');
+save('y2_estimate_with_IMU.mat', 'y2_predict_with_IMU');
+
+save('x3_estimate_with_IMU.mat','x3_predict_with_IMU');
+save('y3_estimate_with_IMU.mat', 'y3_predict_with_IMU');
+
+%% ~~~SIMULATE EKF - PREDICT = IMU, UPDATE = BEACONS & OTHER VEHICLES~~~ %%
+Q1 = diag([0.1, 0.1, 0.01]);
+Q2 = diag([0.1, 0.1, 0.01]);
+Q3 = diag([0.1, 0.1, 0.01]);
+
+%% Read in GPS data saved to file previously
+gpsXpos1 = load('gpsXpos1.mat');
+gpsXpos1 = struct2array(gpsXpos1);
+gpsYpos1 = load('gpsYpos1.mat');
+gpsYpos1 = struct2array(gpsYpos1);
+
+gpsXpos2 = load('gpsXpos2.mat');
+gpsXpos2 = struct2array(gpsXpos2);
+gpsYpos2 = load('gpsYpos2.mat');
+gpsYpos2 = struct2array(gpsYpos2);
+
+gpsXpos3 = load('gpsXpos3.mat');
+gpsXpos3 = struct2array(gpsXpos3);
+gpsYpos3 = load('gpsYpos3.mat');
+gpsYpos3 = struct2array(gpsYpos3);
+
+[x1_update_with_gps, y1_update_with_gps] = perform_filtering(u1, X, Q1, ~, P_init, sampleTime, 1, "IMU", IMU(:,3), ~, ~, ~, 1, gpsXpos1, gpsYpos1, ~, ~, ~, ~, "GPS");
+[x2_update_with_gps, y2_update_with_gps] = perform_filtering(u2, X, Q2, ~, P_init, sampleTime, 2, "IMU", IMU(:,3), ~, ~, ~, 2, ~, ~, gpsXpos2, gpsYpos2, ~, ~, "GPS");
+[x3_update_with_gps, y3_update_with_gps] = perform_filtering(u3, X, Q3, ~, P_init, sampleTime, 3, "IMU", IMU(:,3), ~, ~, ~, 3, ~, ~, ~, ~, gpsXpos3, gpsYpos3, "GPS");
+
+x1_hist = [x1_update_with_gps, y1_update_with_gps];
+x2_hist = [x2_update_with_gps, y2_update_with_gps];
+x3_hist = [x3_update_with_gps, y3_update_with_gps];
+[x4_trilateration, y4_trilateration] = perform_filtering(u3, X, Q4, R_trilateration, P_init, sampleTime, 3, "IMU", IMU(:,3), x1_hist, x2_hist, x3_hist, 4, ~, ~, ~, ~, ~, ~, ~);
+
+%% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ %%
+
+%% ~~~~~ FUNCTIONS TO PERFORM EKF COMPUTATION ~~~~~~~~~~~~~~~~~~~~~~~~~~ %%
+
+function mu_next_noisy = simulate_noisy_state_trans(mu_cur, u_cur, deltaT, x_var, y_var, theta_var, x_mean, y_mean, theta_mean)
+    x_noise = sqrt(x_var).*randn + x_mean;
+    y_noise = sqrt(y_var).*randn + y_mean;
+    theta_noise = sqrt(theta_var).*randn + theta_mean;
+    
+    mu_next_noisy = state_trans_mdl(mu_cur, u_cur, deltaT) + [x_noise; y_noise; theta_noise];
+end
+
+function mu_next = state_trans_mdl(mu_cur, u_cur, deltaT)
+    thetha_t = mu_cur(3,1); % orientation in radians
+    
+    s_t = u_cur(1,1); % forward velocity
+    alpha_t = u_cur(2,1); % rotational rate 
+    
+    y = s_t * sin(thetha_t);
+    x = s_t * cos(thetha_t);
+%     disp("vals")
+%     disp(x)
+%     disp(y)
+%     disp(s_t)
+%     disp(thetha_t)
+%     disp(mu_cur)
+   
+    mu_next = mu_cur + deltaT*[x; y; alpha_t];
+%     disp(mu_next) % Note: this gave correct values! It's a plotting error
+%     now.
+end
+
+% The state transition function is the same as the hw, so Ft is the same
+% The equations should represent the transition to a circle with a center
+% of x = 0, y = v0/omega, and a radius of v0/omega, where omega is rad/s
+function Ft = get_F(mu_cur, u_cur, deltaT)
+    thetha_t = mu_cur(3:3,1); % orientation in radians
+    
+    s_t = u_cur(1:1,1); % forward velocity
+
+    f11 = 1;
+    f12 = 0;
+    f13 = -deltaT * s_t * sin(thetha_t);
+
+    f21 = 0;
+    f22 = 1;
+    f23 = deltaT * s_t * cos(thetha_t);
+
+    f31 = 0;
+    f32 = 0;
+    f33 = 1;
+
+    Ft = [f11 f12 f13; f21 f22 f23; f31 f32 f33];
+end
+
+
+
+function z_noisy = simulate_noisy_beacons_meas(mu_cur, x_varR, y_varR, theta_varR, h1_mean, h2_mean, h3_mean)
+    h1_noise = sqrt(x_varR).*randn + h1_mean;
+    h2_noise = sqrt(y_varR).*randn + h2_mean;
+    h3_noise = sqrt(theta_varR).*randn + h3_mean;
+
+    z_noisy = meas_beacons_mdl(mu_cur) + [h1_noise; h2_noise; h3_noise];
+end
+
+% Again, similar to our hw except we have 3 beacons
+% We can use measurements from GPS and IMU in similar way to the beacons
+function z = meas_beacons_mdl(mu_cur)
+    x = mu_cur(1:1,1);
+    y = mu_cur(2:2,1);
+
+    x1 = -100;
+    y1 = 20;
+
+    x2 = -100;
+    y2 = -50;
+
+    x3 = 0;
+    y3 = 100;
+
+    h1 = sqrt((x1 - x)^2 + (y1 - y)^2);
+    h2 = sqrt((x2 - x)^2 + (y2 - y)^2);
+    h3 = sqrt((x3 - x)^2 + (y3 - y)^2);
+
+    z = [h1; h2; h3];
+end
+
+function Ht = get_beacons_H(mu_cur)
+    x = mu_cur(1:1,1);
+    y = mu_cur(2:2,1);
+
+    x1 = -100;
+    y1 = 20;
+
+    x2 = -100;
+    y2 = -50;
+
+    x3 = 0;
+    y3 = 100;
+
+    h11 = (x - x1)/(sqrt((x1 - x)^2 + (y1 - y)^2));
+    h12 = (y - y1)/(sqrt((x1 - x)^2 + (y1 - y)^2));
+    h13 = 0;
+
+    h21 = (x - x2)/(sqrt((x2 - x)^2 + (y2 - y)^2));
+    h22 = (y - y2)/(sqrt((x2 - x)^2 + (y2 - y)^2));
+    h23 = 0;
+
+    h31 = (x - x3)/(sqrt((x3 - x)^2 + (y3 - y)^2));
+    h32 = (y - y3)/(sqrt((x3 - x)^2 + (y3 - y)^2));
+    h33 = 0;
+
+    Ht = [h11 h12 h13; h21 h22 h23; h31 h32 h33];
+end
+
+% Always assuming mean is zero
+function [x_EKF,y_EKF] = perform_filtering(u_cur, X, Q, R_measurement, P_init, sampleTime, robot_num, predict_source, IMU, x1_hist, x2_hist, x3_hist, robo_ID, gpsXpos1, gpsYpos1, gpsXpos2, gpsYpos2, gpsXpos3, gpsYpos3, GPS)
+    updateRate = 3; % How many times we predict before updating
+
+    % Initialize arrays to store data 
+    vals = size(X(:,1),1);
+    x_EKF = zeros(1, vals);
+    y_EKF = zeros(1, vals);
+    
+    % Set variances for system dynamics
+    x_varQ = Q(1,1);
+    y_varQ = Q(2,2);
+    theta_varQ = Q(3,3);
+
+    % Set variances for beacon measurements
+    x_beacons_varR = R_measurement(1,1);
+    y_beacons_varR = R_measurement(2,2);
+    theta_beacons_varR = R_measurement(3,3);
+
+    % Initialize current state covariance
+    P_cur = P_init;
+
+    % Set current mu by sampling P_cur
+    %     x_cur = sqrt(P_cur(1,1))*randn;
+    %     y_cur = sqrt(P_cur(2,2))*randn;
+    %     theta_cur = sqrt(P_cur(3,3))*randn;
+    x_cur = 0;
+    y_cur = 0;
+    theta_cur = 0;
+    mu_cur_estimated = [x_cur; y_cur; theta_cur];
+    cur_IMU_orientation = [0; 0; theta_cur];
+
+    % The first values in the estimated EKF positions will be the estimated
+    % current position, as described in HW4 
+    x_EKF(1) = x_cur;
+    y_EKF(1) = y_cur;
+
+    % Depending on the robot, we will use different indexing to get data
+    x_col = 6*(robot_num-1) + 1; %r1->col1, r2->col7, r3->col13
+    y_col = 6*(robot_num-1) + 3; %r1->col3, r2->col9, r3->col15
+    theta_col = 6*(robot_num-1) + 5; %r1->col5, r2->col11, r3->col17
+
+    % Iterate for each entry for (x,y) solution from ODE
+    % We already used Po to create an initial mu_cur, so the first iteration of
+    % this will solve for the position estimate at the next timestep which
+    % corresponds to index 2 in our x and y positin oEKF estimated arrays
+    for iter = 1:vals - 1
+        % ~~~~~~PREDICT~~~~~~
+        disp("Kalman running...")
+        
+        % Get the actuals from the ODE -> we will use this in calculating z_t 
+        mu_next_actual = [X(iter+1,x_col); X(iter+1,y_col); X(iter+1,theta_col)];
+        
+        % Step 1: Predict state -> we know actuals from ODE sol'n
+        if (predict_source == "IMU")
+%             disp("IMU")
+            % in this case, let's use the IMU to predict theta
+            cur_IMU_orientation(3,1) = deg2rad(IMU(iter));
+        end
+        mu_cur_estimated(3) = cur_IMU_orientation(3);
+
+        mu_next_estimated = simulate_noisy_state_trans(mu_cur_estimated, u_cur, sampleTime, ...
+                x_varQ, y_varQ, theta_varQ, 0, 0, 0);
+%         disp(mu_next_estimated)
+     
+        % Step 2: Compute P -> compute F at mu estimate|t-1
+        F_next = get_F(mu_cur_estimated, u_cur, sampleTime);
+        P_next = F_next*P_cur*F_next' + Q;
+%         disp("PREDICT")
+%         disp(iter*0.1)
+%         disp(sampleTime*5)
+%         disp(mod(iter*0.1, sampleTime))
+        
+        if(mod(iter*0.1, updateRate*sampleTime) == 0)
+            % ~~~~~~UPDATE~~~~~~
+            % Step 3: Compute pre-fit residuals
+            % First just use beacons
+%             disp("UPDATE")
+            if(GPS == "GPS") % When we use GPS to GPS the GPS. 
+                
+                gpsXpos1(iter)
+                
+            else % When we use beacons
+                z_next_beacons = simulate_noisy_beacons_meas(mu_next_actual, x_beacons_varR, ...
+                    y_beacons_varR, theta_beacons_varR, 0, 0, 0);
+                h_next_beacons = meas_beacons_mdl(mu_next_estimated);
+                y_next_beacons = z_next_beacons - h_next_beacons;
+
+                % Steps 4-6
+                H_beacons = get_beacons_H(mu_next_estimated);
+                [mu_next_updated_estimate, P_next_update] = update_step(mu_next_estimated, y_next_beacons, R_beacons, H_beacons, P_next);
+                P_cur = P_next_update;
+            end
+
+            % store data to plot later
+            x_EKF(iter+1) = mu_next_updated_estimate(1:1,1);
+            y_EKF(iter+1) = mu_next_updated_estimate(2:2,1);
+        
+            % Step 7: make updates for next iteration
+            mu_cur_estimated = mu_next_updated_estimate;
+            
+        else
+            x_EKF(iter+1) = mu_next_estimated(1:1,1);
+            y_EKF(iter+1) = mu_next_estimated(2:2,1);
+            P_cur = P_next;
+            mu_cur_estimated = mu_next_estimated;
+        end
+        
+        
+        
+    end
+end
+
+function [mu_next_updated_estimate, P_next_update] = update_step(mu_next_estimated, y_next, R, H_next, P_next)
+        % Step 4: Compute EKF 
+        K_next = (P_next * H_next') * (R + H_next*P_next*H_next')^-1;
+
+        % Step 5: update state to get EKF processed results
+        mu_next_updated_estimate = mu_next_estimated + K_next*y_next;
+
+        % Step 6: update P
+        P_next_update = (eye(3) - K_next*H_next)*P_next;
+end
